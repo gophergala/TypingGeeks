@@ -13,9 +13,7 @@ import (
 
 var mutex = &sync.Mutex{}
 
-var wordList = []string{"cat", "card", "cog", "cam", "camfrog", "caddie", "cammy"}
-
-//var wordList = []string{"cat", "dog", "max", "delicious", "games", "ant", "min"}
+var wordList = []string{"cat", "dog", "max", "delicious", "games", "ant", "min"}
 
 type Word struct {
 	x, y         int
@@ -52,6 +50,7 @@ type TypingGeeks struct {
 	colSize       int
 	wordVeloRange int
 	wordVeloBase  int
+	wordFps       int
 	fps           int // frame per sec, must be between 1-60, default is 25
 	player1       Player
 }
@@ -91,6 +90,7 @@ func (t *TypingGeeks) Initialise() {
 	// initialise word velocities
 	t.wordVeloBase = 1
 	t.wordVeloRange = 1
+	t.wordFps = 1
 }
 
 func (t *TypingGeeks) WaitExit() {
@@ -109,7 +109,8 @@ func (t *TypingGeeks) GoWordFeeder() {
 			progress:     0,
 			typedKeyChan: make(chan rune),
 		}
-		time.Sleep(500 * time.Millisecond)
+		wordFpsSleepTime := time.Duration(1000000/t.wordFps) * time.Microsecond
+		time.Sleep(wordFpsSleepTime)
 		counter++
 		if counter >= len(wordList) {
 			counter = 0
@@ -117,6 +118,7 @@ func (t *TypingGeeks) GoWordFeeder() {
 		if t.player1.score > 10 {
 			t.wordVeloRange = 5
 			t.wordVeloBase = 2
+			t.wordFps = 5
 		}
 	}
 }
@@ -175,6 +177,9 @@ func (t *TypingGeeks) GoMainProcessor() {
 						// delete word that goes out of windows in wordMap
 						// TODO: need to watch out of race condition for map, too. see -> https://blog.golang.org/go-maps-in-action
 						if t.wordMap[key].y > t.rowSize {
+							// TODO: fail to finish word, implement fail attempt effect
+							t.decreasePlayer1HP(1)
+							// destroy word
 							delete(t.wordMap, key)
 							return
 						}
