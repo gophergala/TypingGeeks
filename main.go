@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -17,24 +18,42 @@ var wordList = []string{"cat", "card", "cog", "cam", "camfrog", "caddie", "cammy
 //var wordList = []string{"cat", "dog", "max", "delicious", "games", "ant", "min"}
 
 type Word struct {
-	r, c         int
+	x, y         int
 	str          string
 	velo         int
 	progress     int
 	typedKeyChan chan rune
 }
 
-type TypingGeeks struct {
-	eventChan    chan termbox.Event
-	exitChan     chan string
-	wordMap      map[rune]Word
-	wordChan     chan Word
-	typedKeyChan chan rune
-	curWordKey   rune
-	rowSize      int
-	colSize      int
-	fps          int // frame per sec, must be between 1-60, default is 25
+type Player struct {
+	score int
+	hp    int
+	mp    int
+}
 
+type Screen struct {
+	width  int
+	height int
+	top    int
+	left   int
+	right  int
+	bottom int
+}
+
+type TypingGeeks struct {
+	eventChan     chan termbox.Event
+	exitChan      chan string
+	wordMap       map[rune]Word
+	wordChan      chan Word
+	typedKeyChan  chan rune
+	curWordKey    rune
+	screen        Screen
+	rowSize       int
+	colSize       int
+	wordVeloRange int
+	wordVeloBase  int
+	fps           int // frame per sec, must be between 1-60, default is 25
+	player1       Player
 }
 
 func (t *TypingGeeks) Initialise() {
@@ -53,9 +72,25 @@ func (t *TypingGeeks) Initialise() {
 	t.wordChan = make(chan Word)
 	t.typedKeyChan = make(chan rune)
 	// screen related
-	t.rowSize = 30
-	t.colSize = 60
+	t.screen = Screen{
+		top:    2,
+		left:   5,
+		right:  5,
+		bottom: 0,
+	}
+	t.screen.width, t.screen.height = termbox.Size()
+	t.colSize = t.screen.width - (t.screen.left + t.screen.right)
+	t.rowSize = t.screen.height - (t.screen.top + t.screen.bottom)
 	t.fps = 25
+	// initialise player
+	t.player1 = Player{
+		hp:    10,
+		mp:    0,
+		score: 0,
+	}
+	// initialise word velocities
+	t.wordVeloBase = 1
+	t.wordVeloRange = 1
 }
 
 func (t *TypingGeeks) WaitExit() {
@@ -67,10 +102,10 @@ func (t *TypingGeeks) GoWordFeeder() {
 	counter := 0
 	for {
 		t.wordChan <- Word{
-			r:            0,
-			c:            rand.Intn(t.colSize),
+			y:            0,
+			x:            rand.Intn(t.colSize),
 			str:          wordList[counter],
-			velo:         1,
+			velo:         t.wordVeloBase + rand.Intn(t.wordVeloRange),
 			progress:     0,
 			typedKeyChan: make(chan rune),
 		}
@@ -78,6 +113,10 @@ func (t *TypingGeeks) GoWordFeeder() {
 		counter++
 		if counter >= len(wordList) {
 			counter = 0
+		}
+		if t.player1.score > 10 {
+			t.wordVeloRange = 5
+			t.wordVeloBase = 2
 		}
 	}
 }
@@ -110,6 +149,8 @@ func (t *TypingGeeks) GoMainProcessor() {
 									curWord.progress++
 									if curWord.progress >= len(curWord.str) {
 										// TODO: finish whole word, implement successful attempt effect
+										t.player1.score += len(curWord.str)
+										//  destroy word
 										delete(t.wordMap, t.curWordKey)
 										t.curWordKey = 0
 										return
@@ -118,6 +159,7 @@ func (t *TypingGeeks) GoMainProcessor() {
 									break
 								} else {
 									// TODO: wrong key, implement fail attempt effect
+									t.decreasePlayer1HP(1)
 								}
 							}
 						}
@@ -128,11 +170,11 @@ func (t *TypingGeeks) GoMainProcessor() {
 						if !exist {
 							return
 						}
-						curWord.r++
+						curWord.y++
 						t.wordMap[key] = curWord
 						// delete word that goes out of windows in wordMap
 						// TODO: need to watch out of race condition for map, too. see -> https://blog.golang.org/go-maps-in-action
-						if t.wordMap[key].r > t.rowSize {
+						if t.wordMap[key].y > t.rowSize {
 							delete(t.wordMap, key)
 							return
 						}
@@ -148,13 +190,51 @@ func (t *TypingGeeks) GoMainProcessor() {
 	}
 }
 
+func (t *TypingGeeks) decreasePlayer1HP(val int) {
+	t.player1.hp -= val
+	if t.player1.hp <= 0 {
+		t.exitChan <- "Game Over"
+	}
+}
+
+func (t *TypingGeeks) drawWord(x, y int, word string, fg, bg termbox.Attribute) {
+	for pos, char := range word {
+		termbox.SetCell(x+pos, y, char, fg, bg)
+	}
+}
+
+func (t *TypingGeeks) drawTitle() {
+	title := "|     TypingGeeks     |"
+	t.drawWord(t.screen.width/2-len(title)/2-3, 0, title, termbox.ColorWhite, termbox.ColorBlack)
+}
+
+func (t *TypingGeeks) drawPlayerStatus() {
+	t.drawWord(t.screen.width-30, 0, "Score: "+strconv.Itoa(t.player1.score), termbox.ColorWhite, termbox.ColorBlack)
+	t.drawWord(15, 0, "HP: "+strconv.Itoa(t.player1.hp), termbox.ColorWhite, termbox.ColorBlack)
+	t.drawWord(30, 0, "MP: "+strconv.Itoa(t.player1.mp), termbox.ColorWhite, termbox.ColorBlack)
+
+}
+
+func (t *TypingGeeks) drawNavBarLine(y int) {
+	for x := 0; x < t.screen.width; x++ {
+		termbox.SetCell(x, y, '-', termbox.ColorWhite, termbox.ColorBlack)
+	}
+}
+
 func (t *TypingGeeks) GoRender() {
 	for {
 		termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
+		// draw Title
+		t.drawTitle()
+		// render navbar showing score, hp, mp(future)
+		t.drawPlayerStatus()
+		t.drawNavBarLine(1)
+		// render all words
 		for _, word := range t.wordMap {
 			for pos, char := range word.str {
 				if pos >= word.progress {
-					termbox.SetCell(word.c+pos, word.r, char, termbox.ColorWhite, termbox.ColorBlack)
+					// render word by also having border from top and left
+					termbox.SetCell(t.screen.left+word.x+pos, t.screen.top+word.y, char, termbox.ColorWhite, termbox.ColorBlack)
 				}
 			}
 		}
@@ -177,6 +257,9 @@ func (t *TypingGeeks) GoKeyAnalyzer() {
 				if curWord, exist := t.wordMap[typedKey]; exist {
 					t.curWordKey = typedKey
 					curWord.typedKeyChan <- typedKey
+				} else {
+					// TODO: wrong key, no word exist, implement fail attempt effect
+					t.decreasePlayer1HP(1)
 				}
 			}
 		case <-time.After(500 * time.Millisecond):
