@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nsf/termbox-go"
 )
@@ -20,8 +21,8 @@ type Word struct {
 type TypingGeek struct {
 	eventChan chan termbox.Event
 	exitChan  chan string
-	wordPool  []*Word
-	wordChan  chan *Word
+	wordMap   map[rune]Word
+	wordChan  chan Word
 	rowSize   int
 	colSize   int
 	fps       int // frame per sec, must be between 1-60, default is 25
@@ -40,8 +41,8 @@ func (t *TypingGeek) Initialise() {
 	// initialise all go channels
 	t.eventChan = make(chan termbox.Event)
 	t.exitChan = make(chan string)
-	t.wordPool = make([]*Word, 0, 100)
-	t.wordChan = make(chan *Word)
+	t.wordMap = make(map[rune]Word)
+	t.wordChan = make(chan Word)
 	// screen related
 	t.rowSize = 30
 	t.colSize = 60
@@ -62,7 +63,8 @@ func (t *TypingGeek) GoKeyScanner() {
 
 func (t *TypingGeek) GoWordFeeder() {
 	for {
-		t.wordChan <- &Word{0, rand.Intn(t.colSize), "test", 1}
+		t.wordChan <- Word{0, rand.Intn(t.colSize), "2test", 2}
+		t.wordChan <- Word{0, rand.Intn(t.colSize), "test", 1}
 		time.Sleep(800 * time.Millisecond)
 	}
 }
@@ -71,22 +73,28 @@ func (t *TypingGeek) GoMainProcessor() {
 	for {
 		select {
 		case newWord := <-t.wordChan: // receive new word and spawn a new go word routine
-			mutex.Lock()
-			t.wordPool = append(t.wordPool, newWord)
-			mutex.Unlock()
-			go func() {
+			// add newWord to wordPool for rendering
+			key, _ := utf8.DecodeRuneInString(newWord.str)
+			if _, present := t.wordMap[key]; present {
+				continue
+			}
+			t.wordMap[key] = newWord
+			// spawn go routine for each word to process itself (moving)
+			go func(key rune) {
 				for {
 					veloSleepTime := time.Duration(100000/newWord.velo) * time.Microsecond
 					time.Sleep(veloSleepTime)
-					newWord.r++
-					// delete word that goes out of windows in wordPool
-					if newWord.r > t.rowSize {
-						// TODO: find a way to delete word pointer out with less time complexity
-						*newWord = Word{}
+					// due to issue #3117, we gotta assign value like this for map of struct for now.
+					tmp := t.wordMap[key]
+					tmp.r++
+					t.wordMap[key] = tmp
+					// delete word that goes out of windows in wordMap
+					if t.wordMap[key].r > t.rowSize {
+						delete(t.wordMap, key)
 						return
 					}
 				}
-			}()
+			}(key)
 		case <-time.After(500 * time.Millisecond):
 			//fmt.Println("timeout")
 		}
@@ -96,20 +104,11 @@ func (t *TypingGeek) GoMainProcessor() {
 func (t *TypingGeek) GoRender() {
 	for {
 		termbox.Clear(termbox.ColorWhite, termbox.ColorBlack)
-		// lock to make sure nothing change while rendering
-		mutex.Lock()
-		for idx := 0; idx < len(t.wordPool); {
-			// clear out word of the wordPool if find empty value (already expired)
-			if *(t.wordPool[idx]) == (Word{}) {
-				t.wordPool[idx], t.wordPool[len(t.wordPool)-1], t.wordPool = t.wordPool[len(t.wordPool)-1], nil, t.wordPool[:len(t.wordPool)-1]
-			} else {
-				for pos, char := range t.wordPool[idx].str {
-					termbox.SetCell(t.wordPool[idx].c+pos, t.wordPool[idx].r, char, termbox.ColorWhite, termbox.ColorBlack)
-				}
-				idx++
+		for _, word := range t.wordMap {
+			for pos, char := range word.str {
+				termbox.SetCell(word.c+pos, word.r, char, termbox.ColorWhite, termbox.ColorBlack)
 			}
 		}
-		mutex.Unlock()
 		termbox.Flush()
 		fpsSleepTime := time.Duration(1000000/t.fps) * time.Microsecond
 		time.Sleep(fpsSleepTime)
