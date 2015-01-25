@@ -94,47 +94,51 @@ func (t *TypingGeeks) GoMainProcessor() {
 			t.wordMap[key] = newWord
 			// spawn go routine for each word to process itself (moving)
 			go func(key rune) {
+				veloSleepTime := time.Duration(1000000/newWord.velo) * time.Microsecond
+				leftSleepTime := veloSleepTime
+				startTime := time.Now()
 				for {
-					veloSleepTime := time.Duration(1000000/newWord.velo) * time.Microsecond
-					time.Sleep(veloSleepTime)
-					// due to issue #3117, we gotta assign value like this for map of struct for now.
-					curWord, exist := t.wordMap[key]
-					if !exist {
-						return
-					}
-					curWord.r++
-					t.wordMap[key] = curWord
-					// delete word that goes out of windows in wordMap
-					// TODO: need to watch out of race condition for map, too. see -> https://blog.golang.org/go-maps-in-action
-					if t.wordMap[key].r > t.rowSize {
-						delete(t.wordMap, key)
-						return
-					}
-				}
-			}(key)
-			go func(key rune) {
-				for {
-					typedKey := <-t.wordMap[key].typedKeyChan
-					curWord, exist := t.wordMap[key]
-					if !exist {
-						return
-					}
-					for pos, char := range curWord.str {
-						if pos == curWord.progress {
-							if char == typedKey {
-								curWord.progress++
-								if curWord.progress >= len(curWord.str) {
-									// TODO: finish whole word, implement successful attempt effect
-									delete(t.wordMap, t.curWordKey)
-									t.curWordKey = 0
-									return
+					select {
+					case typedKey := <-t.wordMap[key].typedKeyChan:
+						curWord, exist := t.wordMap[key]
+						if !exist {
+							return
+						}
+						for pos, char := range curWord.str {
+							if pos == curWord.progress {
+								if char == typedKey {
+									curWord.progress++
+									if curWord.progress >= len(curWord.str) {
+										// TODO: finish whole word, implement successful attempt effect
+										delete(t.wordMap, t.curWordKey)
+										t.curWordKey = 0
+										return
+									}
+									t.wordMap[t.curWordKey] = curWord
+									break
+								} else {
+									// TODO: wrong key, implement fail attempt effect
 								}
-								t.wordMap[t.curWordKey] = curWord
-								break
-							} else {
-								// TODO: wrong key, implement fail attempt effect
 							}
 						}
+						leftSleepTime = veloSleepTime - time.Now().Sub(startTime)
+					case <-time.After(leftSleepTime):
+						// due to issue #3117, we gotta assign value like this for map of struct for now.
+						curWord, exist := t.wordMap[key]
+						if !exist {
+							return
+						}
+						curWord.r++
+						t.wordMap[key] = curWord
+						// delete word that goes out of windows in wordMap
+						// TODO: need to watch out of race condition for map, too. see -> https://blog.golang.org/go-maps-in-action
+						if t.wordMap[key].r > t.rowSize {
+							delete(t.wordMap, key)
+							return
+						}
+						// set startTime over again
+						startTime = time.Now()
+						leftSleepTime = veloSleepTime
 					}
 				}
 			}(key)
