@@ -1,11 +1,13 @@
 TypingGeeks
 ================
 
-"The Will-To-Be best Typing Game Ever" - Gopher
+![TypingGeeksGif](https://github.com/gophergala/TypingGeeks/blob/master/TypingGeeks.gif)
+
+"The Will-To-Be best Typing Game Ever"
 
 ## Introduction
 
-Noted: This is for now a one-player client player which you can only play locally. It is a Proof-of-Concept (POC).  After contest, it will be extended to multiplayer via network where we have main server to match each player together and have skills where each player can attack the other side.
+__Noted:__ This is for now a one-player client player which you can only play locally. It is a Proof-of-Concept (POC).  After contest, it will be extended to multiplayer via network where we have main server to match each player together and have skills where each player can attack the other side.
 
 TypingGeeks will be a peer-to-peer typing game based on Terminal targeting on people who love & always work with Terminal.
 
@@ -33,7 +35,7 @@ With this mini-game, developers can use it to relax during work 5-10 mins and ga
 
 - User matching
 - Generate text ( many languages will be supported, this can increase difficulty and usefulness)
-- Exchange progress of each player and skill that send to attach another player
+- Exchange progress of each player and skill that send to attack another player
 
 ### Client ( Current - Only 1 player locally, Future - Use as a client for Multiplayer )
 
@@ -47,12 +49,12 @@ Noted: Server will give only text and other necessary communication between 2 cl
 
 - Thread for display text
 - Thread for key inputs
-- Thread for receiving data via network or other channel
+- Thread for receiving data via network or other channel (Future)
 
 ## How Golang helps
 
-- Go routines for all parts ( Threading wouldn't become easier than this! )
-- Modularity, easily implementing plugins and scalability
-- Utf8 to support different languages
-- Socket programming via Go Channel
-
+- __Go routines for all parts:__ Threading wouldn't become easier than this!
+- __Modularity:__ easily implementing plugins and scalability
+- __Utf8 support:__ to support different languages
+- __Ease of deployment:__ just one file, you can just put on any server, cloud, or your local machine and PLAY!
+- __Socket programming (Future):__ for multiplayer via network via Go Channel
