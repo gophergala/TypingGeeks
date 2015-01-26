@@ -13,7 +13,10 @@ import (
 
 var mutex = &sync.Mutex{}
 
-var wordList = []string{"cat", "dog", "max", "delicious", "games", "ant", "min"}
+// right now, it cannot handle spacebar and other languages, need to extend it later
+var wordList = []string{"cat", "dog", "max", "delicious", "games", "ant", "min", "computer", "macbook", "microsoft", "apple", "pineapple",
+	"genesis", "Thailand", "Google", "food", "Golang", "gopher", "httpserver", "cassandra", "zookeeper", "hadoop", "combination", "algorithm",
+	"wonderland", "Game of Thrones"}
 
 type Word struct {
 	x, y         int
@@ -99,8 +102,18 @@ func (t *TypingGeeks) WaitExit() {
 }
 
 func (t *TypingGeeks) GoWordFeeder() {
+	/*	wordFile, err := os.Open("words.txt")
+		if err != nil {
+			panic(err)
+		}
+	*/
 	counter := 0
 	for {
+		// set level (word velocities, pop-up frequency)
+		t.wordVeloRange = t.player1.score/50*2 + 1
+		t.wordVeloBase = t.player1.score/100 + 1
+		t.wordFps = t.player1.score/50*2 + 1
+
 		t.wordChan <- Word{
 			y:            0,
 			x:            rand.Intn(t.colSize),
@@ -114,11 +127,6 @@ func (t *TypingGeeks) GoWordFeeder() {
 		counter++
 		if counter >= len(wordList) {
 			counter = 0
-		}
-		if t.player1.score > 10 {
-			t.wordVeloRange = 5
-			t.wordVeloBase = 2
-			t.wordFps = 5
 		}
 	}
 }
@@ -135,7 +143,7 @@ func (t *TypingGeeks) GoMainProcessor() {
 			t.wordMap[key] = newWord
 			// spawn go routine for each word to process itself (moving)
 			go func(key rune) {
-				veloSleepTime := time.Duration(1000000/newWord.velo) * time.Microsecond
+				veloSleepTime := time.Duration(2000000/newWord.velo) * time.Microsecond
 				leftSleepTime := veloSleepTime
 				startTime := time.Now()
 				for {
